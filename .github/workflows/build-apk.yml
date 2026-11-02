@@ -1,3 +1,4 @@
+
 name: Build RX Edit APK
 
 on:
@@ -14,34 +15,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract RX Edit project
-        run: |
-          unzip -q RXEdit_Android_Studio_Project.zip
-          test -f RXEdit/app/build.gradle.kts
-
-      - name: Fix Java and Kotlin versions
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          p = Path("RXEdit/app/build.gradle.kts")
-          s = p.read_text()
-
-          marker = "    compileSdk = 35"
-          replacement = """    compileSdk = 35
-              compileOptions {
-                  sourceCompatibility = JavaVersion.VERSION_17
-                  targetCompatibility = JavaVersion.VERSION_17
-              }
-              kotlinOptions {
-                  jvmTarget = "17"
-              }"""
-
-          if marker not in s:
-              raise SystemExit("Could not find compileSdk setting")
-          p.write_text(s.replace(marker, replacement, 1))
-          PY
-
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -50,12 +23,21 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
-        with:
-          packages: "platform-tools"
 
       - name: Install Android SDK packages
         run: |
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Extract fixed RX Edit project
+        run: |
+          unzip -q RXEdit_Fixed_Project_v2.zip -d extracted
+          PROJECT_DIR="$(dirname "$(find extracted -name settings.gradle.kts -print -quit)")"
+          if [ -z "$PROJECT_DIR" ] || [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
+            echo "Android project files were not found in the ZIP."
+            find extracted -maxdepth 5 -type f | head -100
+            exit 1
+          fi
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -63,10 +45,11 @@ jobs:
           gradle-version: "8.9"
 
       - name: Build APK
-        run: gradle --no-daemon -p RXEdit :app:assembleDebug
+        run: gradle --no-daemon -p "$PROJECT_DIR" assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: RXEdit-debug-apk
-          path: RXEdit/app/build/outputs/apk/debug/app-debug.apk
+          path: extracted/**/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
