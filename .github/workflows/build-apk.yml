@@ -31,13 +31,52 @@ jobs:
       - name: Extract fixed RX Edit project
         run: |
           unzip -q RXEdit_Fixed_Project_v2.zip -d extracted
+
           PROJECT_DIR="$(dirname "$(find extracted -name settings.gradle.kts -print -quit)")"
+
           if [ -z "$PROJECT_DIR" ] || [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
-            echo "Android project files were not found in the ZIP."
+            echo "ERROR: Android project files not found in ZIP."
             find extracted -maxdepth 5 -type f | head -100
             exit 1
           fi
+
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Project directory: $PROJECT_DIR"
+
+      - name: Set Java and Kotlin to version 17
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          project_dir = Path(os.environ["PROJECT_DIR"])
+          gradle_file = project_dir / "app" / "build.gradle.kts"
+          source = gradle_file.read_text()
+
+          java_settings = """
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+          """
+
+          if "sourceCompatibility = JavaVersion.VERSION_17" not in source:
+              marker = "    compileSdk = 35"
+              if marker not in source:
+                  raise SystemExit("Could not find compileSdk = 35 in app/build.gradle.kts")
+              source = source.replace(marker, marker + "\n" + java_settings, 1)
+
+          if "kotlinOptions" not in source:
+              source += """
+
+          kotlinOptions {
+              jvmTarget = "17"
+          }
+          """
+
+          gradle_file.write_text(source)
+          print("Updated Java and Kotlin settings:", gradle_file)
+          PY
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
