@@ -1,0 +1,50 @@
+name: Build RXEdit APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'RXEdit_Android_Studio_Project.zip'
+      - '.github/workflows/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download repository files
+        uses: actions/checkout@v4
+
+      - name: Install Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Extract RXEdit project
+        run: |
+          unzip -q RXEdit_Android_Studio_Project.zip -d project
+          PROJECT_DIR=$(dirname "$(find project -name settings.gradle.kts -print -quit)")
+          if [ "$PROJECT_DIR" = "." ]; then
+            echo "Could not find the Android project."
+            exit 1
+          fi
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Build APK
+        run: gradle -p "$PROJECT_DIR" assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: RXEdit-APK
+          path: project/**/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
