@@ -1,4 +1,4 @@
-`
+
 name: Build RX Edit APK
 
 on:
@@ -21,61 +21,52 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Install Android SDK
+      - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install required SDK packages
-        run: |
-          sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+      - name: Install Android SDK packages
+        run: sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
-      - name: Extract fixed RX Edit project
+      - name: Extract fixed project
         run: |
           unzip -q RXEdit_Fixed_Project_v2.zip -d extracted
-
           PROJECT_DIR="$(dirname "$(find extracted -name settings.gradle.kts -print -quit)")"
-
-          if [ -z "$PROJECT_DIR" ] || [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
-            echo "ERROR: Android project files not found in ZIP."
-            find extracted -maxdepth 5 -type f | head -100
+          if [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
+            echo "Android project not found"
             exit 1
           fi
-
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Project directory: $PROJECT_DIR"
 
-      - name: Set Java and Kotlin to version 17
+      - name: Fix Java and Kotlin versions
         run: |
           python3 - <<'PY'
           import os
           from pathlib import Path
 
-          project_dir = Path(os.environ["PROJECT_DIR"])
-          gradle_file = project_dir / "app" / "build.gradle.kts"
-          source = gradle_file.read_text()
+          p = Path(os.environ["PROJECT_DIR"]) / "app" / "build.gradle.kts"
+          s = p.read_text()
 
-          java_settings = """
+          if "sourceCompatibility = JavaVersion.VERSION_17" not in s:
+              marker = "    compileSdk = 35"
+              if marker not in s:
+                  raise SystemExit("Could not find compileSdk = 35")
+              s = s.replace(marker, marker + """
+
               compileOptions {
                   sourceCompatibility = JavaVersion.VERSION_17
                   targetCompatibility = JavaVersion.VERSION_17
               }
-          """
+          """, 1)
 
-          if "sourceCompatibility = JavaVersion.VERSION_17" not in source:
-              marker = "    compileSdk = 35"
-              if marker not in source:
-                  raise SystemExit("Could not find compileSdk = 35")
-              source = source.replace(marker, marker + "\n" + java_settings, 1)
-
-          if "kotlinOptions" not in source:
-              source += """
+          if "kotlinOptions" not in s:
+              s += """
 
           kotlinOptions {
               jvmTarget = "17"
           }
           """
 
-          gradle_file.write_text(source)
-          print("Updated Java and Kotlin settings.")
+          p.write_text(s)
           PY
 
       - name: Setup Gradle
