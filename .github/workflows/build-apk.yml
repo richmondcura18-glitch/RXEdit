@@ -1,3 +1,4 @@
+`
 name: Build RX Edit APK
 
 on:
@@ -20,12 +21,12 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v4
+      - name: Install Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK packages
+      - name: Install required SDK packages
         run: |
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
       - name: Extract fixed RX Edit project
         run: |
@@ -62,7 +63,7 @@ jobs:
           if "sourceCompatibility = JavaVersion.VERSION_17" not in source:
               marker = "    compileSdk = 35"
               if marker not in source:
-                  raise SystemExit("Could not find compileSdk = 35 in app/build.gradle.kts")
+                  raise SystemExit("Could not find compileSdk = 35")
               source = source.replace(marker, marker + "\n" + java_settings, 1)
 
           if "kotlinOptions" not in source:
@@ -74,7 +75,7 @@ jobs:
           """
 
           gradle_file.write_text(source)
-          print("Updated Java and Kotlin settings:", gradle_file)
+          print("Updated Java and Kotlin settings.")
           PY
 
       - name: Setup Gradle
