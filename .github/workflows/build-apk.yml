@@ -19,6 +19,10 @@ jobs:
           unzip -q RXEdit_Android_Studio_Project.zip
           test -f RXEdit/app/build.gradle.kts
 
+      - name: Fix Java and Kotlin versions
+        run: |
+          sed -i 's/JavaVersion.VERSION_1_8/JavaVersion.VERSION_17/g' RXEdit/app/build.gradle.kts
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
