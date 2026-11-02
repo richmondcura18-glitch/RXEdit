@@ -21,7 +21,26 @@ jobs:
 
       - name: Fix Java and Kotlin versions
         run: |
-          sed -i 's/JavaVersion.VERSION_1_8/JavaVersion.VERSION_17/g' RXEdit/app/build.gradle.kts
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("RXEdit/app/build.gradle.kts")
+          s = p.read_text()
+
+          marker = "    compileSdk = 35"
+          replacement = """    compileSdk = 35
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions {
+                  jvmTarget = "17"
+              }"""
+
+          if marker not in s:
+              raise SystemExit("Could not find compileSdk setting")
+          p.write_text(s.replace(marker, replacement, 1))
+          PY
 
       - name: Setup Java
         uses: actions/setup-java@v4
