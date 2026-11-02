@@ -1,4 +1,3 @@
-
 name: Build RX Edit APK
 
 on:
@@ -10,7 +9,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -27,27 +25,16 @@ jobs:
           packages: "platform-tools"
 
       - name: Install Android SDK packages
-        run: |
-          sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
+        run: sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Extract fixed project
-        shell: bash
+      - name: Extract project
         run: |
           unzip -q RXEdit_Fixed_Project_v2.zip -d extracted
-
           PROJECT_DIR="$(dirname "$(find extracted -name settings.gradle.kts -print -quit)")"
-
-          if [ -z "$PROJECT_DIR" ] || [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
-            echo "ERROR: Android project not found in the ZIP."
-            find extracted -name settings.gradle.kts
-            exit 1
-          fi
-
+          test -f "$PROJECT_DIR/app/build.gradle.kts"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Found project: $PROJECT_DIR"
 
-      - name: Set Java and Kotlin target to 17
-        shell: bash
+      - name: Fix Java and Kotlin targets
         run: |
           python3 - <<'PY'
           import os
@@ -57,56 +44,35 @@ jobs:
           p = Path(os.environ["PROJECT_DIR"]) / "app" / "build.gradle.kts"
           s = p.read_text()
 
-          if "compileOptions" in s:
-              s = re.sub(
-                  r"compileOptions\s*\{.*?\}",
-                  """compileOptions {
-                  sourceCompatibility = JavaVersion.VERSION_17
-                  targetCompatibility = JavaVersion.VERSION_17
-              }""",
-                  s,
-                  count=1,
-                  flags=re.S
+          # Make Java target 17.
+          if "sourceCompatibility = JavaVersion.VERSION_17" not in s:
+              s = s.replace(
+                  "    compileSdk = 35",
+                  '    compileSdk = 35\n\n    compileOptions {\n        sourceCompatibility = JavaVersion.VERSION_17\n        targetCompatibility = JavaVersion.VERSION_17\n    }',
+                  1
               )
-          else:
-              marker = "    compileSdk = 35"
-              if marker not in s:
-                  raise SystemExit("Cannot find compileSdk = 35")
-              s = s.replace(marker, marker + """
 
-              compileOptions {
-                  sourceCompatibility = JavaVersion.VERSION_17
-                  targetCompatibility = JavaVersion.VERSION_17
-              }
-          """, 1)
-
-          if re.search(r"kotlinOptions\s*\{", s):
-              s = re.sub(
-                  r"kotlinOptions\s*\{.*?\}",
-                  """kotlinOptions {
-                  jvmTarget = "17"
-              }""",
-                  s,
-                  count=1,
-                  flags=re.S
-              )
-          elif re.search(r"compilerOptions\s*\{", s):
-              s = re.sub(
-                  r"jvmTarget\s*\.set\(.*?\)",
-                  'jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)',
-                  s,
-                  count=1
-              )
-          else:
-              s += """
-
-          kotlinOptions {
-              jvmTarget = "17"
-          }
-          """
-
+          # Remove misplaced Kotlin options before adding them inside android { }.
+          s = re.sub(r'(?m)^\s*kotlinOptions\s*\{[^}]*\}\s*', '', s)
+          match = re.search(r'(?m)^android\s*\{', s)
+          if not match:
+              raise SystemExit("No android { } block found")
+          opening = s.find("{", match.start())
+          depth = 0
+          closing = None
+          for i in range(opening, len(s)):
+              if s[i] == "{":
+                  depth += 1
+              elif s[i] == "}":
+                  depth -= 1
+                  if depth == 0:
+                      closing = i
+                      break
+          if closing is None:
+              raise SystemExit("Android block is not closed")
+          s = s[:closing] + '\n    kotlinOptions { jvmTarget = "17" }\n' + s[closing:]
           p.write_text(s)
-          print("Updated Java and Kotlin targets:", p)
+          print("Updated", p)
           PY
 
       - name: Setup Gradle
