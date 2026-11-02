@@ -21,41 +21,57 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Locate Android SDK
-        run: |
-          echo "ANDROID_HOME=${ANDROID_HOME:-$ANDROID_SDK_ROOT}" >> "$GITHUB_ENV"
-          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-$ANDROID_HOME}" >> "$GITHUB_ENV"
-          echo "PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools" >> "$GITHUB_ENV"
-          sdkmanager --version
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools"
 
       - name: Install Android SDK packages
         run: |
-          yes | sdkmanager --licenses || true
-          sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
 
       - name: Extract fixed project
+        shell: bash
         run: |
           unzip -q RXEdit_Fixed_Project_v2.zip -d extracted
+
           PROJECT_DIR="$(dirname "$(find extracted -name settings.gradle.kts -print -quit)")"
+
           if [ -z "$PROJECT_DIR" ] || [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
-            echo "Android project not found in ZIP"
+            echo "ERROR: Android project not found in the ZIP."
+            find extracted -name settings.gradle.kts
             exit 1
           fi
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      - name: Fix Java and Kotlin versions
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Found project: $PROJECT_DIR"
+
+      - name: Set Java and Kotlin target to 17
+        shell: bash
         run: |
           python3 - <<'PY'
           import os
+          import re
           from pathlib import Path
 
           p = Path(os.environ["PROJECT_DIR"]) / "app" / "build.gradle.kts"
           s = p.read_text()
 
-          if "sourceCompatibility = JavaVersion.VERSION_17" not in s:
+          if "compileOptions" in s:
+              s = re.sub(
+                  r"compileOptions\s*\{.*?\}",
+                  """compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }""",
+                  s,
+                  count=1,
+                  flags=re.S
+              )
+          else:
               marker = "    compileSdk = 35"
               if marker not in s:
-                  raise SystemExit("Could not find compileSdk = 35")
+                  raise SystemExit("Cannot find compileSdk = 35")
               s = s.replace(marker, marker + """
 
               compileOptions {
@@ -64,7 +80,24 @@ jobs:
               }
           """, 1)
 
-          if "kotlinOptions" not in s:
+          if re.search(r"kotlinOptions\s*\{", s):
+              s = re.sub(
+                  r"kotlinOptions\s*\{.*?\}",
+                  """kotlinOptions {
+                  jvmTarget = "17"
+              }""",
+                  s,
+                  count=1,
+                  flags=re.S
+              )
+          elif re.search(r"compilerOptions\s*\{", s):
+              s = re.sub(
+                  r"jvmTarget\s*\.set\(.*?\)",
+                  'jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)',
+                  s,
+                  count=1
+              )
+          else:
               s += """
 
           kotlinOptions {
@@ -73,6 +106,7 @@ jobs:
           """
 
           p.write_text(s)
+          print("Updated Java and Kotlin targets:", p)
           PY
 
       - name: Setup Gradle
