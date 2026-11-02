@@ -1,21 +1,22 @@
-
 name: Build RX Edit APK
 
 on:
   workflow_dispatch:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract project
+      - name: Extract RX Edit project
         run: |
-          unzip -q RXEdit_Android_Only_Build.zip
+          unzip -q RXEdit_Android_Studio_Project.zip
           test -f RXEdit/app/build.gradle.kts
 
       - name: Setup Java
@@ -24,10 +25,10 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Setup Android
+      - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install SDK
+      - name: Install Android SDK packages
         run: |
           yes | sdkmanager --licenses
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
@@ -45,4 +46,3 @@ jobs:
         with:
           name: RXEdit-debug-apk
           path: RXEdit/app/build/outputs/apk/debug/app-debug.apk
-          
